@@ -222,7 +222,7 @@ def main_keyboard(user_id):
         builder.button(text="✅ Проверить билет")
     
     if is_seller(user_id):
-        builder.button(text="➕ Создать рейс")
+        builder.button(text="✈️ Новый рейс")
         builder.button(text="🗑 Мои рейсы")
     
     if is_admin(user_id):
@@ -492,22 +492,30 @@ async def cmd_admin(message: Message):
     
     await message.answer("🔐 Админ-панель:", reply_markup=builder.as_markup(resize_keyboard=True))
 
-# ================= СОЗДАНИЕ РЕЙСА =================
-@dp.message(F.text == "➕ Создать рейс")
-async def cmd_create_flight(message: Message, state: FSMContext):
-    # Работает для админа и продавца
-    if not is_admin(message.from_user.id) and not is_seller(message.from_user.id):
+# ================= СОЗДАНИЕ РЕЙСА ДЛЯ ПРОДАВЦА =================
+@dp.message(F.text == "✈️ Новый рейс")
+async def cmd_create_flight_seller(message: Message, state: FSMContext):
+    if not is_seller(message.from_user.id):
+        await message.answer("⛔ У вас нет доступа")
         return
     
     seller_airline = get_seller_airline(message.from_user.id)
+    if not seller_airline:
+        await message.answer("❌ У вас не назначена авиакомпания")
+        return
     
-    if is_seller(message.from_user.id) and seller_airline:
-        await state.update_data(airline=seller_airline)
-        await message.answer("Номер рейса:", reply_markup=cancel_keyboard())
-        await state.set_state(AdminStates.waiting_flight_number)
-    else:
-        await message.answer("Название авиакомпании:", reply_markup=cancel_keyboard())
-        await state.set_state(AdminStates.waiting_airline)
+    await state.update_data(airline=seller_airline)
+    await message.answer("Номер рейса:", reply_markup=cancel_keyboard())
+    await state.set_state(AdminStates.waiting_flight_number)
+
+# ================= СОЗДАНИЕ РЕЙСА ДЛЯ АДМИНА =================
+@dp.message(F.text == "✈️ Создать рейс")
+async def cmd_create_flight_admin(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer("Название авиакомпании:", reply_markup=cancel_keyboard())
+    await state.set_state(AdminStates.waiting_airline)
 
 @dp.message(StateFilter(AdminStates.waiting_airline), F.text)
 async def process_airline(message: Message, state: FSMContext):
