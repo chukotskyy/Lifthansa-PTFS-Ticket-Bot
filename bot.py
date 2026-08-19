@@ -5,7 +5,7 @@ import random
 import sqlite3
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery,
     LabeledPrice, PreCheckoutQuery, Message
@@ -421,7 +421,7 @@ async def cmd_create_flight(message: Message, state: FSMContext):
     await message.answer("Название авиакомпании:", reply_markup=cancel_keyboard())
     await state.set_state(AdminStates.waiting_airline)
 
-@dp.message(AdminStates.waiting_airline)
+@dp.message(StateFilter(AdminStates.waiting_airline), F.text)
 async def process_airline(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
@@ -431,7 +431,7 @@ async def process_airline(message: Message, state: FSMContext):
     await message.answer("Номер рейса:")
     await state.set_state(AdminStates.waiting_flight_number)
 
-@dp.message(AdminStates.waiting_flight_number)
+@dp.message(StateFilter(AdminStates.waiting_flight_number), F.text)
 async def process_number(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
@@ -441,7 +441,7 @@ async def process_number(message: Message, state: FSMContext):
     await message.answer("Маршрут:")
     await state.set_state(AdminStates.waiting_route)
 
-@dp.message(AdminStates.waiting_route)
+@dp.message(StateFilter(AdminStates.waiting_route), F.text)
 async def process_route(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
@@ -451,7 +451,7 @@ async def process_route(message: Message, state: FSMContext):
     await message.answer("Цена в RUB:")
     await state.set_state(AdminStates.waiting_price)
 
-@dp.message(AdminStates.waiting_price)
+@dp.message(StateFilter(AdminStates.waiting_price), F.text)
 async def process_price(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
@@ -510,7 +510,7 @@ async def cmd_add_staff(message: Message, state: FSMContext):
     await message.answer("Введите ID бортпроводника:", reply_markup=cancel_keyboard())
     await state.set_state(AdminStates.waiting_staff_add)
 
-@dp.message(AdminStates.waiting_staff_add)
+@dp.message(StateFilter(AdminStates.waiting_staff_add), F.text)
 async def process_add_staff(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
@@ -532,7 +532,7 @@ async def cmd_del_staff(message: Message, state: FSMContext):
     await message.answer("Введите ID бортпроводника:", reply_markup=cancel_keyboard())
     await state.set_state(AdminStates.waiting_staff_del)
 
-@dp.message(AdminStates.waiting_staff_del)
+@dp.message(StateFilter(AdminStates.waiting_staff_del), F.text)
 async def process_del_staff(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
@@ -555,7 +555,7 @@ async def cmd_link(message: Message, state: FSMContext):
     await message.answer("Введите ссылку:", reply_markup=cancel_keyboard())
     await state.set_state(AdminStates.waiting_link)
 
-@dp.message(AdminStates.waiting_link)
+@dp.message(StateFilter(AdminStates.waiting_link), F.text)
 async def process_link(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
@@ -577,7 +577,7 @@ async def cmd_give(message: Message, state: FSMContext):
     await message.answer("ID пользователя:", reply_markup=cancel_keyboard())
     await state.set_state(AdminStates.waiting_give_id)
 
-@dp.message(AdminStates.waiting_give_id)
+@dp.message(StateFilter(AdminStates.waiting_give_id), F.text)
 async def process_give_id(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
@@ -592,7 +592,7 @@ async def process_give_id(message: Message, state: FSMContext):
     await message.answer("Сколько RUB?")
     await state.set_state(AdminStates.waiting_give_amount)
 
-@dp.message(AdminStates.waiting_give_amount)
+@dp.message(StateFilter(AdminStates.waiting_give_amount), F.text)
 async def process_give_amount(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
@@ -618,7 +618,7 @@ async def cmd_check(message: Message, state: FSMContext):
     await message.answer("Номер билета:", reply_markup=cancel_keyboard())
     await state.set_state(AdminStates.waiting_check)
 
-@dp.message(AdminStates.waiting_check)
+@dp.message(StateFilter(AdminStates.waiting_check), F.text)
 async def process_check(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
