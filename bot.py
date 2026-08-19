@@ -78,6 +78,11 @@ def init_db():
         username TEXT
     )""")
     
+    cur.execute("""CREATE TABLE IF NOT EXISTS creators (
+        user_id INTEGER PRIMARY KEY,
+        username TEXT
+    )""")
+    
     cur.execute("""CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT
@@ -90,6 +95,28 @@ def init_db():
 
 def is_admin(user_id):
     return user_id in ADMIN_IDS
+
+def is_creator(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM creators WHERE user_id = ?", (user_id,))
+    creator = cur.fetchone()
+    conn.close()
+    return creator is not None
+
+def add_creator(user_id, username):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("INSERT OR REPLACE INTO creators VALUES (?, ?)", (user_id, username))
+    conn.commit()
+    conn.close()
+
+def remove_creator(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM creators WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
 
 def get_user(user_id):
     conn = sqlite3.connect(DB_NAME)
@@ -184,6 +211,10 @@ def main_keyboard(user_id):
     if is_staff(user_id) or is_admin(user_id):
         builder.button(text="✅ Проверить билет")
     
+    if is_creator(user_id) or is_admin(user_id):
+        builder.button(text="✈️ Создать рейс")
+        builder.button(text="🗑 Удалить рейс")
+    
     if is_admin(user_id):
         builder.button(text="🔐 Админ-панель")
     
@@ -204,6 +235,8 @@ class AdminStates(StatesGroup):
     waiting_link = State()
     waiting_staff_add = State()
     waiting_staff_del = State()
+    waiting_creator_add = State()
+    waiting_creator_del = State()
     waiting_give_id = State()
     waiting_give_amount = State()
     waiting_check = State()
@@ -223,10 +256,8 @@ async def cmd_start(message: Message):
 # ================= ПРОФИЛЬ =================
 @dp.message(F.text == "👤 Профиль")
 async def cmd_profile(message: Message):
+    add_user(message.from_user.id, message.from_user.username)
     user = get_user(message.from_user.id)
-    if not user:
-        add_user(message.from_user.id, message.from_user.username)
-        user = get_user(message.from_user.id)
     
     await message.answer(
         f"👤 <b>Профиль</b>\n\n"
@@ -263,6 +294,7 @@ async def cmd_bonus(message: Message):
 # ================= ПОКУПКА БИЛЕТА =================
 @dp.message(F.text == "🛫 Купить билет")
 async def cmd_buy(message: Message):
+    add_user(message.from_user.id, message.from_user.username)
     flights = get_active_flights()
     
     if not flights:
@@ -278,6 +310,7 @@ async def cmd_buy(message: Message):
 
 @dp.callback_query(F.data.startswith("flight:"))
 async def cb_flight(call: CallbackQuery):
+    add_user(call.from_user.id, call.from_user.username)
     flight_id = int(call.data.split(":")[1])
     flight = get_flight(flight_id)
     
@@ -301,6 +334,7 @@ async def cb_flight(call: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("payrub:"))
 async def cb_payrub(call: CallbackQuery):
+    add_user(call.from_user.id, call.from_user.username)
     flight_id = int(call.data.split(":")[1])
     flight = get_flight(flight_id)
     user = get_user(call.from_user.id)
@@ -349,6 +383,7 @@ async def cb_payrub(call: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("paymiles:"))
 async def cb_paymiles(call: CallbackQuery):
+    add_user(call.from_user.id, call.from_user.username)
     flight_id = int(call.data.split(":")[1])
     flight = get_flight(flight_id)
     user = get_user(call.from_user.id)
@@ -407,16 +442,18 @@ async def cmd_admin(message: Message):
     builder.button(text="🔗 Ссылка на сервер")
     builder.button(text="➕ Бортпроводник")
     builder.button(text="➖ Удалить бортпроводника")
+    builder.button(text="➕ Создатель рейсов")
+    builder.button(text="➖ Удалить создателя")
     builder.button(text="💳 Выдать валюту")
     builder.button(text="🔙 Назад")
     builder.adjust(2)
     
     await message.answer("🔐 Админ-панель:", reply_markup=builder.as_markup(resize_keyboard=True))
 
-# ================= СОЗДАНИЕ РЕЙСА =================
+# ================= СОЗДАНИЕ РЕЙСА (для админов и создателей) =================
 @dp.message(F.text == "✈️ Создать рейс")
 async def cmd_create_flight(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id) and not is_creator(message.from_user.id):
         return
     await message.answer("Название авиакомпании:", reply_markup=cancel_keyboard())
     await state.set_state(AdminStates.waiting_airline)
@@ -478,7 +515,7 @@ async def process_price(message: Message, state: FSMContext):
 # ================= УДАЛЕНИЕ РЕЙСА =================
 @dp.message(F.text == "🗑 Удалить рейс")
 async def cmd_delete_flight(message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id) and not is_creator(message.from_user.id):
         return
     
     flights = get_active_flights()
@@ -495,7 +532,7 @@ async def cmd_delete_flight(message: Message):
 
 @dp.callback_query(F.data.startswith("del:"))
 async def cb_delete(call: CallbackQuery):
-    if not is_admin(call.from_user.id):
+    if not is_admin(call.from_user.id) and not is_creator(call.from_user.id):
         return
     flight_id = int(call.data.split(":")[1])
     delete_flight(flight_id)
@@ -545,6 +582,51 @@ async def process_del_staff(message: Message, state: FSMContext):
         return
     remove_staff(staff_id)
     await message.answer(f"✅ Бортпроводник {staff_id} удален!", reply_markup=main_keyboard(message.from_user.id))
+    await state.clear()
+
+# ================= СОЗДАТЕЛИ РЕЙСОВ =================
+@dp.message(F.text == "➕ Создатель рейсов")
+async def cmd_add_creator(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer("Введите ID создателя рейсов:", reply_markup=cancel_keyboard())
+    await state.set_state(AdminStates.waiting_creator_add)
+
+@dp.message(StateFilter(AdminStates.waiting_creator_add), F.text)
+async def process_add_creator(message: Message, state: FSMContext):
+    if message.text == "❌ Отмена":
+        await state.clear()
+        await message.answer("Отменено", reply_markup=main_keyboard(message.from_user.id))
+        return
+    try:
+        creator_id = int(message.text.strip())
+    except:
+        await message.answer("❌ Введите число!")
+        return
+    add_creator(creator_id, "unknown")
+    await message.answer(f"✅ Создатель рейсов {creator_id} добавлен!", reply_markup=main_keyboard(message.from_user.id))
+    await state.clear()
+
+@dp.message(F.text == "➖ Удалить создателя")
+async def cmd_del_creator(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer("Введите ID создателя рейсов:", reply_markup=cancel_keyboard())
+    await state.set_state(AdminStates.waiting_creator_del)
+
+@dp.message(StateFilter(AdminStates.waiting_creator_del), F.text)
+async def process_del_creator(message: Message, state: FSMContext):
+    if message.text == "❌ Отмена":
+        await state.clear()
+        await message.answer("Отменено", reply_markup=main_keyboard(message.from_user.id))
+        return
+    try:
+        creator_id = int(message.text.strip())
+    except:
+        await message.answer("❌ Введите число!")
+        return
+    remove_creator(creator_id)
+    await message.answer(f"✅ Создатель рейсов {creator_id} удален!", reply_markup=main_keyboard(message.from_user.id))
     await state.clear()
 
 # ================= ССЫЛКА НА СЕРВЕР =================
