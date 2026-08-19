@@ -248,6 +248,7 @@ def cancel_keyboard():
 
 # ================= СОСТОЯНИЯ =================
 class AdminStates(StatesGroup):
+    waiting_roblox_nick = State()
     waiting_airline = State()
     waiting_flight_number = State()
     waiting_route = State()
@@ -265,17 +266,18 @@ class AdminStates(StatesGroup):
     waiting_give_id = State()
     waiting_give_amount = State()
     waiting_check = State()
-    waiting_roblox_nick = State()
-    waiting_cancel_flight = State()
 
 # ================= КОМАНДА /start =================
 @dp.message(Command("start"))
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext):
     add_user(message.from_user.id, message.from_user.username)
     user = get_user(message.from_user.id)
     
     if not user[2]:
-        await message.answer("Введите ваш никнейм в Roblox:", reply_markup=cancel_keyboard())
+        await message.answer(
+            "🎮 Введите ваш никнейм в Roblox:",
+            reply_markup=cancel_keyboard()
+        )
         await state.set_state(AdminStates.waiting_roblox_nick)
     else:
         await message.answer(
@@ -293,8 +295,9 @@ async def process_roblox_nick(message: Message, state: FSMContext):
         return
     
     update_roblox_nick(message.from_user.id, message.text)
+    
     await message.answer(
-        f"✅ Никнейм сохранен: {message.text}\n\n"
+        f"✅ Никнейм сохранен: <b>{message.text}</b>\n\n"
         f"✈️ <b>Добро пожаловать в AviaSales PTFS!</b>",
         reply_markup=main_keyboard(message.from_user.id),
         parse_mode="HTML"
@@ -361,6 +364,7 @@ async def cmd_list_flights(message: Message):
             f"Цена: {f[4]} RUB\n"
             f"📅 {f[8]} ⏰ {f[9]}\n"
             f"🚪 Гейт: {f[10]}\n"
+            f"📢 {f[6]}\n"
             f"──────────────\n"
         )
         builder.button(text=f"Купить: {f[1]} {f[2]}", callback_data=f"flight:{f[0]}")
@@ -667,7 +671,7 @@ async def process_gate(message: Message, state: FSMContext):
     )
     await state.clear()
 
-# ================= ОТМЕНА РЕЙСА С ВОЗВРАТОМ =================
+# ================= ОТМЕНА РЕЙСА =================
 @dp.message(F.text == "🔴 Отменить рейс")
 async def cmd_cancel_flight(message: Message):
     if not is_admin(message.from_user.id) and not is_seller(message.from_user.id):
@@ -689,7 +693,7 @@ async def cmd_cancel_flight(message: Message):
         await message.answer("У вас нет созданных рейсов")
         return
     
-    await message.answer("Выберите рейс для отмены (деньги вернутся пассажирам):", reply_markup=builder.as_markup())
+    await message.answer("Выберите рейс для отмены (деньги вернутся):", reply_markup=builder.as_markup())
 
 @dp.callback_query(F.data.startswith("cancel:"))
 async def cb_cancel_flight(call: CallbackQuery):
@@ -700,25 +704,22 @@ async def cb_cancel_flight(call: CallbackQuery):
         await call.answer("Рейс не найден")
         return
     
-    # Возвращаем деньги пассажирам
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
     cur.execute("SELECT user_id, price, payment_method FROM tickets WHERE flight_number = ? AND used = 0", (flight[2],))
     passengers = cur.fetchall()
     
-    for passenger in passengers:
-        user_id, price, method = passenger
+    for p in passengers:
+        user_id, price, method = p
         if method == "RUB":
-            # Возвращаем RUB, мили не трогаем
-            conn.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (price, user_id))
+            cur.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (price, user_id))
     
     conn.commit()
     conn.close()
     
-    # Деактивируем рейс
     delete_flight(flight_id, call.from_user.id if is_seller(call.from_user.id) else None)
     
-    await call.message.edit_text(f"✅ Рейс {flight[1]} {flight[2]} отменен. Деньги возвращены пассажирам.")
+    await call.message.edit_text(f"✅ Рейс {flight[1]} {flight[2]} отменен. Деньги возвращены.")
     await call.answer()
 
 # ================= УДАЛЕНИЕ РЕЙСА =================
