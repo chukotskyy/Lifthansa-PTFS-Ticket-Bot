@@ -208,7 +208,7 @@ class AdminStates(StatesGroup):
     waiting_give_amount = State()
     waiting_check = State()
 
-# ================= ОБРАБОТЧИКИ =================
+# ================= КОМАНДА /start =================
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     add_user(message.from_user.id, message.from_user.username)
@@ -220,6 +220,7 @@ async def cmd_start(message: Message):
         parse_mode="HTML"
     )
 
+# ================= ПРОФИЛЬ =================
 @dp.message(F.text == "👤 Профиль")
 async def cmd_profile(message: Message):
     user = get_user(message.from_user.id)
@@ -235,6 +236,7 @@ async def cmd_profile(message: Message):
         parse_mode="HTML"
     )
 
+# ================= БОНУС =================
 @dp.message(F.text == "💰 Бонус")
 async def cmd_bonus(message: Message):
     add_user(message.from_user.id, message.from_user.username)
@@ -258,6 +260,7 @@ async def cmd_bonus(message: Message):
     
     await message.answer(f"✅ +{BONUS_AMOUNT} RUB!")
 
+# ================= ПОКУПКА БИЛЕТА =================
 @dp.message(F.text == "🛫 Купить билет")
 async def cmd_buy(message: Message):
     flights = get_active_flights()
@@ -392,7 +395,7 @@ async def cb_paymiles(call: CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ================= АДМИН =================
+# ================= АДМИН-ПАНЕЛЬ =================
 @dp.message(F.text == "🔐 Админ-панель")
 async def cmd_admin(message: Message):
     if not is_admin(message.from_user.id):
@@ -410,6 +413,7 @@ async def cmd_admin(message: Message):
     
     await message.answer("🔐 Админ-панель:", reply_markup=builder.as_markup(resize_keyboard=True))
 
+# ================= СОЗДАНИЕ РЕЙСА =================
 @dp.message(F.text == "✈️ Создать рейс")
 async def cmd_create_flight(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -471,6 +475,7 @@ async def process_price(message: Message, state: FSMContext):
     )
     await state.clear()
 
+# ================= УДАЛЕНИЕ РЕЙСА =================
 @dp.message(F.text == "🗑 Удалить рейс")
 async def cmd_delete_flight(message: Message):
     if not is_admin(message.from_user.id):
@@ -497,6 +502,7 @@ async def cb_delete(call: CallbackQuery):
     await call.message.edit_text("✅ Рейс удален")
     await call.answer()
 
+# ================= БОРТПРОВОДНИКИ =================
 @dp.message(F.text == "➕ Бортпроводник")
 async def cmd_add_staff(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -511,9 +517,9 @@ async def process_add_staff(message: Message, state: FSMContext):
         await message.answer("Отменено", reply_markup=main_keyboard(message.from_user.id))
         return
     try:
-        staff_id = int(message.text)
+        staff_id = int(message.text.strip())
     except:
-        await message.answer("Введите число!")
+        await message.answer("❌ Введите число!")
         return
     add_staff(staff_id, "unknown")
     await message.answer(f"✅ Бортпроводник {staff_id} добавлен!", reply_markup=main_keyboard(message.from_user.id))
@@ -533,14 +539,15 @@ async def process_del_staff(message: Message, state: FSMContext):
         await message.answer("Отменено", reply_markup=main_keyboard(message.from_user.id))
         return
     try:
-        staff_id = int(message.text)
+        staff_id = int(message.text.strip())
     except:
-        await message.answer("Введите число!")
+        await message.answer("❌ Введите число!")
         return
     remove_staff(staff_id)
     await message.answer(f"✅ Бортпроводник {staff_id} удален!", reply_markup=main_keyboard(message.from_user.id))
     await state.clear()
 
+# ================= ССЫЛКА НА СЕРВЕР =================
 @dp.message(F.text == "🔗 Ссылка на сервер")
 async def cmd_link(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -562,6 +569,7 @@ async def process_link(message: Message, state: FSMContext):
     await message.answer("✅ Ссылка обновлена!", reply_markup=main_keyboard(message.from_user.id))
     await state.clear()
 
+# ================= ВЫДАЧА ВАЛЮТЫ =================
 @dp.message(F.text == "💳 Выдать валюту")
 async def cmd_give(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -576,9 +584,9 @@ async def process_give_id(message: Message, state: FSMContext):
         await message.answer("Отменено", reply_markup=main_keyboard(message.from_user.id))
         return
     try:
-        user_id = int(message.text)
+        user_id = int(message.text.strip())
     except:
-        await message.answer("Введите число!")
+        await message.answer("❌ Введите число!")
         return
     await state.update_data(give_id=user_id)
     await message.answer("Сколько RUB?")
@@ -591,9 +599,9 @@ async def process_give_amount(message: Message, state: FSMContext):
         await message.answer("Отменено", reply_markup=main_keyboard(message.from_user.id))
         return
     try:
-        amount = int(message.text)
+        amount = int(message.text.strip())
     except:
-        await message.answer("Введите число!")
+        await message.answer("❌ Введите число!")
         return
     data = await state.get_data()
     user_id = data['give_id']
@@ -602,6 +610,7 @@ async def process_give_amount(message: Message, state: FSMContext):
     await message.answer(f"✅ Баланс {user_id} изменен на {amount}", reply_markup=main_keyboard(message.from_user.id))
     await state.clear()
 
+# ================= ПРОВЕРКА БИЛЕТА =================
 @dp.message(F.text == "✅ Проверить билет")
 async def cmd_check(message: Message, state: FSMContext):
     if not is_staff(message.from_user.id) and not is_admin(message.from_user.id):
@@ -649,6 +658,7 @@ async def process_check(message: Message, state: FSMContext):
     )
     await state.clear()
 
+# ================= ДОНАТ =================
 @dp.message(F.text == "💎 Донат")
 async def cmd_donate(message: Message):
     builder = InlineKeyboardBuilder()
@@ -691,6 +701,7 @@ async def success_payment(message: Message):
             update_balance(message.from_user.id, pkg['rub'])
             await message.answer(f"✅ +{pkg['rub']} RUB!")
 
+# ================= НАЗАД =================
 @dp.message(F.text == "🔙 Назад")
 async def cmd_back(message: Message):
     await message.answer("Главное меню:", reply_markup=main_keyboard(message.from_user.id))
