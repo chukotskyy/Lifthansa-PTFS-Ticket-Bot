@@ -264,6 +264,7 @@ class AdminStates(StatesGroup):
     waiting_flight_price = State()
     waiting_link = State()
     waiting_staff_add = State()
+    waiting_staff_del = State()
     waiting_give_id = State()
     waiting_give_amount = State()
     waiting_check_ticket = State()
