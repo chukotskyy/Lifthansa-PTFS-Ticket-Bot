@@ -19,7 +19,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 # ================= НАСТРОЙКИ =================
 BOT_TOKEN = "8393319624:AAFSScRfmtAI5IGy7drlkTmJEMSHJl7LN_g"
 DB_NAME = "airline.db"
-
 BONUS_AMOUNT = 250
 BONUS_COOLDOWN = 30 * 60
 MILES_PERCENT = 20
