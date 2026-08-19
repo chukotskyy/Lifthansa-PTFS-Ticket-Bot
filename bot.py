@@ -44,6 +44,7 @@ def init_db():
     cur.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
         username TEXT,
+        roblox_nick TEXT,
         balance INTEGER DEFAULT 1000,
         miles INTEGER DEFAULT 0,
         last_bonus TIMESTAMP
@@ -59,6 +60,7 @@ def init_db():
         airline_channel TEXT,
         departure_date TEXT,
         departure_time TEXT,
+        gate TEXT,
         is_active INTEGER DEFAULT 1,
         created_by INTEGER,
         created_at TIMESTAMP
@@ -68,13 +70,13 @@ def init_db():
         ticket_id TEXT PRIMARY KEY,
         user_id INTEGER,
         username TEXT,
+        roblox_nick TEXT,
         airline TEXT,
         flight_number TEXT,
         route TEXT,
         price INTEGER,
         payment_method TEXT,
         miles_earned INTEGER,
-        seat TEXT,
         gate TEXT,
         server_link TEXT,
         airline_channel TEXT,
@@ -145,6 +147,13 @@ def add_user(user_id, username):
     conn.commit()
     conn.close()
 
+def update_roblox_nick(user_id, nick):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET roblox_nick = ? WHERE user_id = ?", (nick, user_id))
+    conn.commit()
+    conn.close()
+
 def update_balance(user_id, amount, miles_amount=0):
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
@@ -160,13 +169,13 @@ def get_active_flights():
     conn.close()
     return flights
 
-def add_flight(airline, flight_number, route, price, server_link, airline_channel, departure_date, departure_time, created_by):
+def add_flight(airline, flight_number, route, price, server_link, airline_channel, departure_date, departure_time, gate, created_by):
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
     cur.execute("""INSERT INTO flights 
-        (airline, flight_number, route, price, server_link, airline_channel, departure_date, departure_time, created_by, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
-        (airline, flight_number, route, price, server_link, airline_channel, departure_date, departure_time, created_by, datetime.now().isoformat()))
+        (airline, flight_number, route, price, server_link, airline_channel, departure_date, departure_time, gate, created_by, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
+        (airline, flight_number, route, price, server_link, airline_channel, departure_date, departure_time, gate, created_by, datetime.now().isoformat()))
     conn.commit()
     conn.close()
 
@@ -224,6 +233,7 @@ def main_keyboard(user_id):
     if is_seller(user_id):
         builder.button(text="✈️ Новый рейс")
         builder.button(text="🗑 Мои рейсы")
+        builder.button(text="🔴 Отменить рейс")
     
     if is_admin(user_id):
         builder.button(text="🔐 Админ-панель")
@@ -246,6 +256,7 @@ class AdminStates(StatesGroup):
     waiting_airline_channel = State()
     waiting_departure_date = State()
     waiting_departure_time = State()
+    waiting_gate = State()
     waiting_staff_add = State()
     waiting_staff_del = State()
     waiting_seller_add = State()
@@ -254,18 +265,41 @@ class AdminStates(StatesGroup):
     waiting_give_id = State()
     waiting_give_amount = State()
     waiting_check = State()
+    waiting_roblox_nick = State()
+    waiting_cancel_flight = State()
 
 # ================= КОМАНДА /start =================
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     add_user(message.from_user.id, message.from_user.username)
+    user = get_user(message.from_user.id)
+    
+    if not user[2]:
+        await message.answer("Введите ваш никнейм в Roblox:", reply_markup=cancel_keyboard())
+        await state.set_state(AdminStates.waiting_roblox_nick)
+    else:
+        await message.answer(
+            f"✈️ <b>Добро пожаловать в AviaSales PTFS!</b>\n\n"
+            f"Используйте кнопки внизу экрана.",
+            reply_markup=main_keyboard(message.from_user.id),
+            parse_mode="HTML"
+        )
+
+@dp.message(StateFilter(AdminStates.waiting_roblox_nick), F.text)
+async def process_roblox_nick(message: Message, state: FSMContext):
+    if message.text == "❌ Отмена":
+        await state.clear()
+        await message.answer("Отменено", reply_markup=main_keyboard(message.from_user.id))
+        return
+    
+    update_roblox_nick(message.from_user.id, message.text)
     await message.answer(
-        f"✈️ <b>Добро пожаловать в AviaSales PTFS!</b>\n\n"
-        f"Здесь разные авиакомпании продают билеты на свои рейсы.\n\n"
-        f"Используйте кнопки внизу экрана.",
+        f"✅ Никнейм сохранен: {message.text}\n\n"
+        f"✈️ <b>Добро пожаловать в AviaSales PTFS!</b>",
         reply_markup=main_keyboard(message.from_user.id),
         parse_mode="HTML"
     )
+    await state.clear()
 
 # ================= ПРОФИЛЬ =================
 @dp.message(F.text == "👤 Профиль")
@@ -275,9 +309,10 @@ async def cmd_profile(message: Message):
     
     await message.answer(
         f"👤 <b>Профиль</b>\n\n"
-        f"Имя: @{user[1]}\n"
-        f"💰 Баланс: {user[2]} RUB\n"
-        f"🛩 Мили: {user[3]}",
+        f"Telegram: @{user[1]}\n"
+        f"Roblox: {user[2] or 'Не указан'}\n"
+        f"💰 Баланс: {user[3]} RUB\n"
+        f"🛩 Мили: {user[4]}",
         parse_mode="HTML"
     )
 
@@ -288,8 +323,8 @@ async def cmd_bonus(message: Message):
     user = get_user(message.from_user.id)
     now = datetime.now()
     
-    if user[4]:
-        last = datetime.fromisoformat(user[4])
+    if user[5]:
+        last = datetime.fromisoformat(user[5])
         diff = (now - last).total_seconds()
         if diff < BONUS_COOLDOWN:
             remaining = int(BONUS_COOLDOWN - diff)
@@ -325,7 +360,7 @@ async def cmd_list_flights(message: Message):
             f"Маршрут: {f[3]}\n"
             f"Цена: {f[4]} RUB\n"
             f"📅 {f[8]} ⏰ {f[9]}\n"
-            f"📢 <a href='{f[6]}'>Канал авиакомпании</a>\n"
+            f"🚪 Гейт: {f[10]}\n"
             f"──────────────\n"
         )
         builder.button(text=f"Купить: {f[1]} {f[2]}", callback_data=f"flight:{f[0]}")
@@ -355,7 +390,8 @@ async def cb_flight(call: CallbackQuery):
         f"Маршрут: {flight[3]}\n"
         f"Цена: {flight[4]} RUB\n"
         f"Дата: {flight[8]}\n"
-        f"Время: {flight[9]}\n\n"
+        f"Время: {flight[9]}\n"
+        f"Гейт: {flight[10]}\n\n"
         f"Способ оплаты:",
         reply_markup=builder.as_markup(),
         parse_mode="HTML"
@@ -373,25 +409,19 @@ async def cb_payrub(call: CallbackQuery):
         return
     
     price = flight[4]
-    if user[2] < price:
+    if user[3] < price:
         await call.answer("Недостаточно средств!")
         return
     
     ticket_id = f"{flight[1][:2].upper()}-{random.randint(1000, 9999)}"
-    seat = f"{random.randint(1, 30)}{random.choice('ABCDEF')}"
-    gate = f"{random.choice('ABCD')}{random.randint(1, 20)}"
     miles = int(price * MILES_PERCENT / 100)
-    server_link = flight[5]
-    airline_channel = flight[6]
-    departure_date = flight[8]
-    departure_time = flight[9]
     
     update_balance(call.from_user.id, -price, miles)
     
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
     cur.execute("INSERT INTO tickets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-                (ticket_id, call.from_user.id, call.from_user.username, flight[1], flight[2], flight[3], price, "RUB", miles, seat, gate, server_link, airline_channel, departure_date, departure_time))
+                (ticket_id, call.from_user.id, call.from_user.username, user[2], flight[1], flight[2], flight[3], price, "RUB", miles, flight[10], flight[5], flight[6], flight[8], flight[9]))
     conn.commit()
     conn.close()
     
@@ -402,17 +432,18 @@ async def cb_payrub(call: CallbackQuery):
         f"║           BOARDING PASS           ║\n"
         f"╠══════════════════════════════════╣\n"
         f"║ Ticket: {ticket_id}\n"
-        f"║ Passenger: @{call.from_user.username}\n"
+        f"║ TG: @{call.from_user.username}\n"
+        f"║ Roblox: {user[2]}\n"
         f"║ Flight: {flight[2]}\n"
         f"║ Route: {flight[3]}\n"
-        f"║ Date: {departure_date}\n"
-        f"║ Time: {departure_time}\n"
-        f"║ Seat: {seat}  Gate: {gate}\n"
+        f"║ Date: {flight[8]}\n"
+        f"║ Time: {flight[9]}\n"
+        f"║ Gate: {flight[10]}\n"
         f"║ Payment: {price} RUB\n"
         f"║ Miles: +{miles}\n"
         f"╚══════════════════════════════════╝"
         f"</code>\n\n"
-        f"🔗 <a href='{server_link}'><b>Приватный сервер</b></a>"
+        f"🔗 <a href='{flight[5]}'><b>Приватный сервер</b></a>"
     )
     
     await call.message.edit_text(ticket_text, parse_mode="HTML", disable_web_page_preview=True)
@@ -429,25 +460,19 @@ async def cb_paymiles(call: CallbackQuery):
         return
     
     price = flight[4]
-    if user[3] < price:
+    if user[4] < price:
         await call.answer("Недостаточно миль!")
         return
     
     ticket_id = f"{flight[1][:2].upper()}-{random.randint(1000, 9999)}"
-    seat = f"{random.randint(1, 30)}{random.choice('ABCDEF')}"
-    gate = f"{random.choice('ABCD')}{random.randint(1, 20)}"
     miles = int(price * MILES_PERCENT / 100)
-    server_link = flight[5]
-    airline_channel = flight[6]
-    departure_date = flight[8]
-    departure_time = flight[9]
     
     update_balance(call.from_user.id, 0, -price + miles)
     
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
     cur.execute("INSERT INTO tickets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-                (ticket_id, call.from_user.id, call.from_user.username, flight[1], flight[2], flight[3], price, "MILES", miles, seat, gate, server_link, airline_channel, departure_date, departure_time))
+                (ticket_id, call.from_user.id, call.from_user.username, user[2], flight[1], flight[2], flight[3], price, "MILES", miles, flight[10], flight[5], flight[6], flight[8], flight[9]))
     conn.commit()
     conn.close()
     
@@ -458,17 +483,18 @@ async def cb_paymiles(call: CallbackQuery):
         f"║           BOARDING PASS           ║\n"
         f"╠══════════════════════════════════╣\n"
         f"║ Ticket: {ticket_id}\n"
-        f"║ Passenger: @{call.from_user.username}\n"
+        f"║ TG: @{call.from_user.username}\n"
+        f"║ Roblox: {user[2]}\n"
         f"║ Flight: {flight[2]}\n"
         f"║ Route: {flight[3]}\n"
-        f"║ Date: {departure_date}\n"
-        f"║ Time: {departure_time}\n"
-        f"║ Seat: {seat}  Gate: {gate}\n"
+        f"║ Date: {flight[8]}\n"
+        f"║ Time: {flight[9]}\n"
+        f"║ Gate: {flight[10]}\n"
         f"║ Payment: {price} miles\n"
         f"║ Miles: +{miles}\n"
         f"╚══════════════════════════════════╝"
         f"</code>\n\n"
-        f"🔗 <a href='{server_link}'><b>Приватный сервер</b></a>"
+        f"🔗 <a href='{flight[5]}'><b>Приватный сервер</b></a>"
     )
     
     await call.message.edit_text(ticket_text, parse_mode="HTML", disable_web_page_preview=True)
@@ -482,6 +508,7 @@ async def cmd_admin(message: Message):
     builder = ReplyKeyboardBuilder()
     builder.button(text="✈️ Создать рейс")
     builder.button(text="🗑 Удалить рейс")
+    builder.button(text="🔴 Отменить рейс")
     builder.button(text="➕ Бортпроводник")
     builder.button(text="➖ Удалить бортпроводника")
     builder.button(text="➕ Продавец")
@@ -496,7 +523,6 @@ async def cmd_admin(message: Message):
 @dp.message(F.text == "✈️ Новый рейс")
 async def cmd_create_flight_seller(message: Message, state: FSMContext):
     if not is_seller(message.from_user.id):
-        await message.answer("⛔ У вас нет доступа")
         return
     
     seller_airline = get_seller_airline(message.from_user.id)
@@ -571,7 +597,7 @@ async def process_server_link(message: Message, state: FSMContext):
         return
     
     await state.update_data(server_link=message.text)
-    await message.answer("Ссылка на Telegram/Дискорд канал авиакомпании:")
+    await message.answer("Ссылка или username на Telegram/Дискорд канал:")
     await state.set_state(AdminStates.waiting_airline_channel)
 
 @dp.message(StateFilter(AdminStates.waiting_airline_channel), F.text)
@@ -603,6 +629,17 @@ async def process_departure_time(message: Message, state: FSMContext):
         await message.answer("Отменено", reply_markup=main_keyboard(message.from_user.id))
         return
     
+    await state.update_data(departure_time=message.text)
+    await message.answer("Гейт (например: A12):")
+    await state.set_state(AdminStates.waiting_gate)
+
+@dp.message(StateFilter(AdminStates.waiting_gate), F.text)
+async def process_gate(message: Message, state: FSMContext):
+    if message.text == "❌ Отмена":
+        await state.clear()
+        await message.answer("Отменено", reply_markup=main_keyboard(message.from_user.id))
+        return
+    
     data = await state.get_data()
     
     add_flight(
@@ -613,6 +650,7 @@ async def process_departure_time(message: Message, state: FSMContext):
         data['server_link'],
         data['airline_channel'],
         data['departure_date'],
+        data['departure_time'],
         message.text,
         message.from_user.id
     )
@@ -623,10 +661,65 @@ async def process_departure_time(message: Message, state: FSMContext):
         f"📍 {data['route']}\n"
         f"💰 {data['price']} RUB\n"
         f"📅 {data['departure_date']}\n"
-        f"⏰ {message.text}",
+        f"⏰ {data['departure_time']}\n"
+        f"🚪 Гейт: {message.text}",
         reply_markup=main_keyboard(message.from_user.id)
     )
     await state.clear()
+
+# ================= ОТМЕНА РЕЙСА С ВОЗВРАТОМ =================
+@dp.message(F.text == "🔴 Отменить рейс")
+async def cmd_cancel_flight(message: Message):
+    if not is_admin(message.from_user.id) and not is_seller(message.from_user.id):
+        return
+    
+    flights = get_active_flights()
+    if not flights:
+        await message.answer("Нет активных рейсов")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    for f in flights:
+        if is_seller(message.from_user.id) and f[11] != message.from_user.id:
+            continue
+        builder.button(text=f"🔴 {f[1]} {f[2]}", callback_data=f"cancel:{f[0]}")
+    builder.adjust(1)
+    
+    if not builder._markup.inline_keyboard:
+        await message.answer("У вас нет созданных рейсов")
+        return
+    
+    await message.answer("Выберите рейс для отмены (деньги вернутся пассажирам):", reply_markup=builder.as_markup())
+
+@dp.callback_query(F.data.startswith("cancel:"))
+async def cb_cancel_flight(call: CallbackQuery):
+    flight_id = int(call.data.split(":")[1])
+    flight = get_flight(flight_id)
+    
+    if not flight:
+        await call.answer("Рейс не найден")
+        return
+    
+    # Возвращаем деньги пассажирам
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("SELECT user_id, price, payment_method FROM tickets WHERE flight_number = ? AND used = 0", (flight[2],))
+    passengers = cur.fetchall()
+    
+    for passenger in passengers:
+        user_id, price, method = passenger
+        if method == "RUB":
+            # Возвращаем RUB, мили не трогаем
+            conn.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (price, user_id))
+    
+    conn.commit()
+    conn.close()
+    
+    # Деактивируем рейс
+    delete_flight(flight_id, call.from_user.id if is_seller(call.from_user.id) else None)
+    
+    await call.message.edit_text(f"✅ Рейс {flight[1]} {flight[2]} отменен. Деньги возвращены пассажирам.")
+    await call.answer()
 
 # ================= УДАЛЕНИЕ РЕЙСА =================
 @dp.message(F.text == "🗑 Удалить рейс")
@@ -652,7 +745,7 @@ async def cmd_delete_my_flights(message: Message):
         return
     
     flights = get_active_flights()
-    my_flights = [f for f in flights if f[10] == message.from_user.id]
+    my_flights = [f for f in flights if f[11] == message.from_user.id]
     
     if not my_flights:
         await message.answer("У вас нет созданных рейсов")
@@ -865,10 +958,11 @@ async def process_check(message: Message, state: FSMContext):
     await message.answer(
         f"✅ ПОСАДКА РАЗРЕШЕНА\n\n"
         f"👤 @{ticket[2]}\n"
-        f"✈️ {ticket[3]} {ticket[4]}\n"
-        f"📍 {ticket[5]}\n"
+        f"🎮 {ticket[3]}\n"
+        f"✈️ {ticket[4]} {ticket[5]}\n"
+        f"📍 {ticket[6]}\n"
         f"📅 {ticket[13]} {ticket[14]}\n"
-        f"💺 {ticket[9]}",
+        f"🚪 {ticket[10]}",
         reply_markup=main_keyboard(message.from_user.id)
     )
     await state.clear()
