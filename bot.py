@@ -17,7 +17,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 # ================= НАСТРОЙКИ =================
-BOT_TOKEN = os.getenv("8393319624:AAFSScRfmtAI5IGy7drlkTmJEMSHJl7LN_g")
+BOT_TOKEN = "8393319624:AAFSScRfmtAI5IGy7drlkTmJEMSHJl7LN_g"
 DB_NAME = "airline.db"
 
 BONUS_AMOUNT = 250
