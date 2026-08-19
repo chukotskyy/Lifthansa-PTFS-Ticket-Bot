@@ -213,7 +213,7 @@ def is_staff(user_id):
 # ================= КЛАВИАТУРЫ =================
 def main_keyboard(user_id):
     builder = ReplyKeyboardBuilder()
-    builder.button(text="🛫 Купить билет")
+    builder.button(text="📋 Список билетов")
     builder.button(text="👤 Профиль")
     builder.button(text="💰 Бонус")
     builder.button(text="💎 Донат")
@@ -222,7 +222,7 @@ def main_keyboard(user_id):
         builder.button(text="✅ Проверить билет")
     
     if is_seller(user_id):
-        builder.button(text="✈️ Мой рейс")
+        builder.button(text="➕ Создать рейс")
         builder.button(text="🗑 Мои рейсы")
     
     if is_admin(user_id):
@@ -262,7 +262,6 @@ async def cmd_start(message: Message):
     await message.answer(
         f"✈️ <b>Добро пожаловать в AviaSales PTFS!</b>\n\n"
         f"Здесь разные авиакомпании продают билеты на свои рейсы.\n\n"
-        f"Покупайте билеты, получайте бонусы и мили!\n\n"
         f"Используйте кнопки внизу экрана.",
         reply_markup=main_keyboard(message.from_user.id),
         parse_mode="HTML"
@@ -306,22 +305,34 @@ async def cmd_bonus(message: Message):
     
     await message.answer(f"✅ +{BONUS_AMOUNT} RUB!")
 
-# ================= ПОКУПКА БИЛЕТА =================
-@dp.message(F.text == "🛫 Купить билет")
-async def cmd_buy(message: Message):
+# ================= СПИСОК БИЛЕТОВ =================
+@dp.message(F.text == "📋 Список билетов")
+async def cmd_list_flights(message: Message):
     add_user(message.from_user.id, message.from_user.username)
     flights = get_active_flights()
     
     if not flights:
-        await message.answer("❌ Нет активных рейсов")
+        await message.answer("❌ Нет доступных рейсов")
         return
+    
+    text = "📋 <b>Доступные рейсы:</b>\n\n"
     
     builder = InlineKeyboardBuilder()
     for f in flights:
-        builder.button(text=f"{f[1]} | {f[3]} | {f[4]} RUB", callback_data=f"flight:{f[0]}")
+        text += (
+            f"✈️ <b>{f[1]}</b>\n"
+            f"Номер: {f[2]}\n"
+            f"Маршрут: {f[3]}\n"
+            f"Цена: {f[4]} RUB\n"
+            f"📅 {f[8]} ⏰ {f[9]}\n"
+            f"📢 <a href='{f[6]}'>Канал авиакомпании</a>\n"
+            f"──────────────\n"
+        )
+        builder.button(text=f"Купить: {f[1]} {f[2]}", callback_data=f"flight:{f[0]}")
+    
     builder.adjust(1)
     
-    await message.answer("✈️ <b>Доступные рейсы:</b>\n\nВыберите рейс:", reply_markup=builder.as_markup(), parse_mode="HTML")
+    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML", disable_web_page_preview=True)
 
 @dp.callback_query(F.data.startswith("flight:"))
 async def cb_flight(call: CallbackQuery):
@@ -401,8 +412,7 @@ async def cb_payrub(call: CallbackQuery):
         f"║ Miles: +{miles}\n"
         f"╚══════════════════════════════════╝"
         f"</code>\n\n"
-        f"🔗 <a href='{server_link}'><b>Приватный сервер</b></a>\n"
-        f"📢 <a href='{airline_channel}'><b>Канал авиакомпании</b></a>"
+        f"🔗 <a href='{server_link}'><b>Приватный сервер</b></a>"
     )
     
     await call.message.edit_text(ticket_text, parse_mode="HTML", disable_web_page_preview=True)
@@ -458,8 +468,7 @@ async def cb_paymiles(call: CallbackQuery):
         f"║ Miles: +{miles}\n"
         f"╚══════════════════════════════════╝"
         f"</code>\n\n"
-        f"🔗 <a href='{server_link}'><b>Приватный сервер</b></a>\n"
-        f"📢 <a href='{airline_channel}'><b>Канал авиакомпании</b></a>"
+        f"🔗 <a href='{server_link}'><b>Приватный сервер</b></a>"
     )
     
     await call.message.edit_text(ticket_text, parse_mode="HTML", disable_web_page_preview=True)
@@ -483,29 +492,22 @@ async def cmd_admin(message: Message):
     
     await message.answer("🔐 Админ-панель:", reply_markup=builder.as_markup(resize_keyboard=True))
 
-# ================= СОЗДАНИЕ РЕЙСА (для продавцов) =================
-@dp.message(F.text == "✈️ Мой рейс")
-async def cmd_create_flight_seller(message: Message, state: FSMContext):
-    if not is_seller(message.from_user.id):
+# ================= СОЗДАНИЕ РЕЙСА =================
+@dp.message(F.text == "➕ Создать рейс")
+async def cmd_create_flight(message: Message, state: FSMContext):
+    # Работает для админа и продавца
+    if not is_admin(message.from_user.id) and not is_seller(message.from_user.id):
         return
     
     seller_airline = get_seller_airline(message.from_user.id)
-    if not seller_airline:
-        await message.answer("❌ У вас не назначена авиакомпания")
-        return
     
-    await state.update_data(airline=seller_airline)
-    await message.answer("Номер рейса:", reply_markup=cancel_keyboard())
-    await state.set_state(AdminStates.waiting_flight_number)
-
-# ================= СОЗДАНИЕ РЕЙСА (для админа) =================
-@dp.message(F.text == "✈️ Создать рейс")
-async def cmd_create_flight(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
-    await message.answer("Название авиакомпании:", reply_markup=cancel_keyboard())
-    await state.set_state(AdminStates.waiting_airline)
+    if is_seller(message.from_user.id) and seller_airline:
+        await state.update_data(airline=seller_airline)
+        await message.answer("Номер рейса:", reply_markup=cancel_keyboard())
+        await state.set_state(AdminStates.waiting_flight_number)
+    else:
+        await message.answer("Название авиакомпании:", reply_markup=cancel_keyboard())
+        await state.set_state(AdminStates.waiting_airline)
 
 @dp.message(StateFilter(AdminStates.waiting_airline), F.text)
 async def process_airline(message: Message, state: FSMContext):
@@ -620,8 +622,8 @@ async def process_departure_time(message: Message, state: FSMContext):
 
 # ================= УДАЛЕНИЕ РЕЙСА =================
 @dp.message(F.text == "🗑 Удалить рейс")
-async def cmd_delete_flight(message: Message):
-    if not is_admin(message.from_user.id) and not is_seller(message.from_user.id):
+async def cmd_delete_flight_admin(message: Message):
+    if not is_admin(message.from_user.id):
         return
     
     flights = get_active_flights()
@@ -631,16 +633,10 @@ async def cmd_delete_flight(message: Message):
     
     builder = InlineKeyboardBuilder()
     for f in flights:
-        if is_seller(message.from_user.id) and f[10] != message.from_user.id:
-            continue
         builder.button(text=f"🗑 {f[1]} {f[2]}", callback_data=f"del:{f[0]}")
     builder.adjust(1)
     
-    if not builder._markup.inline_keyboard:
-        await message.answer("У вас нет созданных рейсов")
-        return
-    
-    await message.answer("Выберите рейс для удаления:", reply_markup=builder.as_markup())
+    await message.answer("Выберите рейс:", reply_markup=builder.as_markup())
 
 @dp.message(F.text == "🗑 Мои рейсы")
 async def cmd_delete_my_flights(message: Message):
